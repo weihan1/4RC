@@ -8,12 +8,13 @@
     <a href='https://scholar.google.com/citations?user=fZxK2B0AAAAJ&hl=en' target='_blank'>Yihang Luo</a><sup>1</sup>&emsp;
     <a href='https://shangchenzhou.com/' target='_blank'>Shangchen Zhou</a><sup>1</sup>&emsp;
     <a href="https://nirvanalan.github.io/" target='_blank'>Yushi Lan</a><sup>2</sup>&emsp;
-    <a href="https://xingangpan.github.io/" target='_blank'>Xingang Pan</a><sup>1</sup>&emsp;
-    <a href="https://www.mmlab-ntu.com/person/ccloy/" target='_blank'>Chen Change Loy</a><sup>1</sup>&emsp;
+    <a href="https://xingangpan.github.io/" target='_blank'>Xingang Pan</a><sup>1,3</sup>&emsp;
+    <a href="https://www.mmlab-ntu.com/person/ccloy/" target='_blank'>Chen Change Loy</a><sup>1,3</sup>&emsp;
 </div>
 <div>
     <sup>1</sup>S-Lab, Nanyang Technological University&emsp; 
     <sup>2</sup>University of Oxford&emsp; 
+    <sup>3</sup>ACE Robotics&emsp; 
 </div>
 
 
@@ -193,10 +194,10 @@ Open `http://localhost:8020` in your browser to interact with the 3D visualizati
    If you find our repo useful for your research, please consider citing our paper:
 
    ```bibtex
-  @article{luo20264rc,
+  @inproceedings{luo20264rc,
       title     = {4RC: 4D Reconstruction via Conditional Querying Anytime and Anywhere},
       author    = {Yihang Luo and Shangchen Zhou and Yushi Lan and Xingang Pan and Chen Change Loy},
-      journal   = {arXiv preprint arXiv:2602.10094},
+      journal   = {ICML},
       year      = {2026}
   }
    ```
