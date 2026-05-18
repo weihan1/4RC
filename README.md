@@ -5,7 +5,7 @@
 </div>
 
 <div>
-    <a href='https://scholar.google.com/citations?user=fZxK2B0AAAAJ&hl=en' target='_blank'>Yihang Luo</a><sup>1</sup>&emsp;
+    <a href='https://yihangluo.com/' target='_blank'>Yihang Luo</a><sup>1</sup>&emsp;
     <a href='https://shangchenzhou.com/' target='_blank'>Shangchen Zhou</a><sup>1</sup>&emsp;
     <a href="https://nirvanalan.github.io/" target='_blank'>Yushi Lan</a><sup>2</sup>&emsp;
     <a href="https://xingangpan.github.io/" target='_blank'>Xingang Pan</a><sup>1,3</sup>&emsp;
