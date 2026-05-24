@@ -88,6 +88,7 @@ def load_sequence_images(sequence_dir: Path):
         size=512,
         patch_size=14,
         verbose=True,
+        square_ok=True #force square inputs
     )
     return images, rgb_frames
 
