@@ -22,6 +22,7 @@ nvitop
 h5py
 
 # --------- project core --------- #
+imageio
 trimesh
 roma
 open3d

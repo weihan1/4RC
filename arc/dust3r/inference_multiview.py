@@ -37,7 +37,8 @@ def loss_of_one_batch(
             view[name] = view[name].to(device, non_blocking=True)
 
     views = batch
-
+    if isinstance(device, str):
+        device=  torch.device(device)
     autocast_dict = dict(device_type=device.type)
     if precision == "32":
         autocast_dict["enabled"] = False
