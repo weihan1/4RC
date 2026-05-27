@@ -54,6 +54,12 @@ def parse_args():
         help="Root directory where AiM sequence predictions will be saved.",
     )
     parser.add_argument(
+        "--max-rgb-frames",
+        type=int,
+        default=100,
+        help="Maximum number of RGB frames to run inference on per sequence.",
+    )
+    parser.add_argument(
         "--skip-existing",
         action="store_true",
         default=False,
@@ -90,13 +96,22 @@ def resolve_sequence_dirs(aim_root: Path, animal: str, sequence: str | None):
     return sorted(path for path in animal_dir.iterdir() if path.is_dir())
 
 
-def load_sequence_images(sequence_dir: Path):
-    rgb_frames = list_aim_rgb_frames(sequence_dir)
+def select_rgb_frames(rgb_frames, max_rgb_frames: int):
+    if max_rgb_frames <= 0:
+        raise ValueError(f"max_rgb_frames must be positive, got {max_rgb_frames}")
+    if len(rgb_frames) <= max_rgb_frames:
+        return rgb_frames
+
+    indices = np.linspace(0, len(rgb_frames) - 1, max_rgb_frames, dtype=int)
+    return [rgb_frames[i] for i in indices]
+
+
+def load_sequence_images(sequence_dir: Path, rgb_frames=None):
+    if rgb_frames is None:
+        rgb_frames = list_aim_rgb_frames(sequence_dir)
     if not rgb_frames:
         raise ValueError(f"No AiM RGB frames found in {sequence_dir}")
 
-    # print(f">> Loading sequence {sequence_dir.name} from {sequence_dir}")
-    # print(f"   Found {len(rgb_frames)} RGB frames")
     images = load_images(
         [str(path) for path in rgb_frames],
         size=512,
@@ -188,18 +203,21 @@ def run_sequence(
     animal: str,
     sequence_dir: Path,
     results_root: Path,
+    max_rgb_frames: int = 100,
     skip_existing: bool = False,
 ):
     frame_paths = list_aim_rgb_frames(sequence_dir)
     if not frame_paths:
         raise ValueError(f"No AiM RGB frames found in {sequence_dir}")
 
+    frame_paths = select_rgb_frames(frame_paths, max_rgb_frames)
+
     output_dir = results_root / animal / sequence_dir.name
     if skip_existing and sequence_outputs_exist(frame_paths, output_dir):
-        # print(f">> Skipping {sequence_dir.name}: outputs already exist in {output_dir}")
+        print("sequence exists already, skipping")
         return None
 
-    images, frame_paths = load_sequence_images(sequence_dir)
+    images, frame_paths = load_sequence_images(sequence_dir, rgb_frames=frame_paths)
 
     with torch.no_grad():
         predictions, _ = inference(
@@ -245,6 +263,7 @@ def main():
                 args.animal,
                 sequence_dir,
                 args.results_root,
+                max_rgb_frames=args.max_rgb_frames,
                 skip_existing=args.skip_existing,
             )
         except:
