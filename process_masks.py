@@ -2,10 +2,11 @@ import argparse
 from pathlib import Path
 
 import numpy as np
+import PIL.Image
 import torch
 
 from arc.dust3r.inference_multiview import inference
-from arc.dust3r.utils.image import rgb, _resize_pil_image
+from arc.dust3r.utils.image import rgb
 from arc.models.arc.arc import Arc
 import tqdm
 import cv2
@@ -27,6 +28,7 @@ FRAME_OUTPUT_FILES = (
     "K.npy",
     "rgb_processed.png",
 )
+MASK_OUTPUT_FILE = "mask_processed.png"
 
 def select_rgb_frames(rgb_frames, max_rgb_frames: int):
     if max_rgb_frames <= 0:
@@ -46,11 +48,55 @@ def list_aim_rgb_frames(sequence_dir: Path):
         and "_mask" in path.stem
     )
 
-def load_images(folder_or_list, size, square_ok=False, verbose=True, rotate_clockwise_90=False, crop_to_landscape=False, patch_size=16):
-    import PIL.Image
-    import torchvision.transforms as tvf
+def _resize_mask_pil_image(mask, long_edge_size):
+    scale = long_edge_size / max(mask.size)
+    new_size = tuple(int(round(dim * scale)) for dim in mask.size)
+    return mask.resize(new_size, PIL.Image.NEAREST)
+
+
+def _load_single_channel_mask(path):
     from PIL.ImageOps import exif_transpose
 
+    mask = exif_transpose(PIL.Image.open(path))
+    bands = mask.getbands()
+
+    if mask.mode in {"1", "L", "I", "I;16", "P"}:
+        return mask.copy()
+
+    if "A" in bands:
+        alpha = np.asarray(mask.getchannel("A"))
+        if np.any(alpha != alpha.flat[0]):
+            return PIL.Image.fromarray(alpha)
+
+    mask_np = np.asarray(mask)
+    if mask_np.ndim == 2:
+        return PIL.Image.fromarray(mask_np)
+    if mask_np.ndim == 3 and mask_np.shape[2] == 1:
+        return PIL.Image.fromarray(mask_np[..., 0])
+    if mask_np.ndim == 3 and mask_np.shape[2] >= 3:
+        if np.array_equal(mask_np[..., 0], mask_np[..., 1]) and np.array_equal(mask_np[..., 0], mask_np[..., 2]):
+            return PIL.Image.fromarray(mask_np[..., 0])
+        return mask.convert("L")
+
+    raise ValueError(f"Unsupported mask shape for {path}: {mask_np.shape}")
+
+
+def _crop_like_dust3r(img, size, square_ok=False, patch_size=16):
+    W, H = img.size
+    cx, cy = W // 2, H // 2
+
+    if size <= 392:
+        half = min(cx, cy)
+        return img.crop((cx - half, cy - half, cx + half, cy + half))
+
+    halfw = ((2 * cx) // patch_size) * patch_size // 2
+    halfh = ((2 * cy) // patch_size) * patch_size // 2
+    if not square_ok and W == H:
+        halfh = 3 * halfw / 4
+    return img.crop((cx - halfw, cy - halfh, cx + halfw, cy + halfh))
+
+
+def load_masks(folder_or_list, size, square_ok=False, verbose=True, patch_size=16):
     os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 
     try:
@@ -60,7 +106,7 @@ def load_images(folder_or_list, size, square_ok=False, verbose=True, rotate_cloc
         heif_support_enabled = True
     except ImportError:
         heif_support_enabled = False
-    """open and convert all images in a list or folder to proper input format for DUSt3R"""
+    """Open masks and apply the same resize/crop geometry as DUSt3R RGB inputs."""
     if isinstance(folder_or_list, str):
         if verbose:
             print(f">> Loading images from {folder_or_list}")
@@ -83,33 +129,20 @@ def load_images(folder_or_list, size, square_ok=False, verbose=True, rotate_cloc
     for path in folder_content:
         if not path.lower().endswith(supported_images_extensions):
             continue
-        img = exif_transpose(PIL.Image.open(os.path.join(root, path))).convert("RGB")
-
+        img = _load_single_channel_mask(os.path.join(root, path))
 
         W1, H1 = img.size
         if size <= 392:
             # resize short side to 224 (then crop)
-            img = _resize_pil_image(img, round(size * max(W1 / H1, H1 / W1)))
+            img = _resize_mask_pil_image(img, round(size * max(W1 / H1, H1 / W1)))
         else:
             # resize long side to 512
-            img = _resize_pil_image(img, size)
-        W, H = img.size
-        cx, cy = W // 2, H // 2
-        if size <= 392:
-            half = min(cx, cy)
-            img = img.crop((cx - half, cy - half, cx + half, cy + half))
-        else:
-            # 16 is the patch size and 8 is the 16//2
-            halfw, halfh = ((2 * cx) // patch_size) * patch_size//2, ((2 * cy) // patch_size) * patch_size//2
-            if not (square_ok) and W == H:
-                halfh = 3 * halfw / 4
-            img = img.crop((cx - halfw, cy - halfh, cx + halfw, cy + halfh))
+            img = _resize_mask_pil_image(img, size)
+        img = _crop_like_dust3r(img, size=size, square_ok=square_ok, patch_size=patch_size)
 
         W2, H2 = img.size
         if verbose:
             print(f" - adding {path} with resolution {W1}x{H1} --> {W2}x{H2}")
-        # true_shape = [img.size] if height > width else [img.size[::-1]] # if is protrait, the true shape should inverse
-        true_shape = [img.size[::-1]] # true shape requires H, W
         imgs.append(img)
 
     assert imgs, "no images found at " + root
@@ -123,7 +156,7 @@ def load_sequence_images(sequence_dir: Path, rgb_frames=None):
     if not rgb_frames:
         raise ValueError(f"No AiM RGB frames found in {sequence_dir}")
 
-    images = load_images(
+    images = load_masks(
         [str(path) for path in rgb_frames],
         size=512,
         patch_size=14,
@@ -132,8 +165,30 @@ def load_sequence_images(sequence_dir: Path, rgb_frames=None):
     )
     return images, rgb_frames
 
+def frame_timestep(frame_path: Path):
+    return frame_path.stem.removesuffix("_mask")
+
+
+def frame_output_dir(output_dir: Path, frame_path: Path):
+    return output_dir / frame_timestep(frame_path) / "4rc"
+
+
+def frame_outputs_exist(output_dir: Path, frame_path: Path):
+    return (frame_output_dir(output_dir, frame_path) / MASK_OUTPUT_FILE).exists()
+
+
 def sequence_outputs_exist(frame_paths, output_dir: Path):
     return all(frame_outputs_exist(output_dir, frame_path) for frame_path in frame_paths)
+
+
+def save_processed_masks(masks, frame_paths, output_dir: Path):
+    if len(masks) != len(frame_paths):
+        raise ValueError(f"Got {len(masks)} masks for {len(frame_paths)} frame paths")
+
+    for mask, frame_path in zip(masks, frame_paths):
+        save_dir = frame_output_dir(output_dir, frame_path)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        mask.save(save_dir / MASK_OUTPUT_FILE)
 
 def run_sequence(
     animal: str,
@@ -154,6 +209,7 @@ def run_sequence(
         return None
 
     images, frame_paths = load_sequence_images(sequence_dir, rgb_frames=frame_paths)
+    save_processed_masks(images, frame_paths, output_dir)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run 4RC demo on AiM sequences.")
