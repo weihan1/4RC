@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -211,6 +212,26 @@ def run_sequence(
     images, frame_paths = load_sequence_images(sequence_dir, rgb_frames=frame_paths)
     save_processed_masks(images, frame_paths, output_dir)
 
+
+def _run_sequence_task(
+    animal: str,
+    sequence_dir: Path,
+    results_root: Path,
+    max_rgb_frames: int,
+    skip_existing: bool,
+):
+    try:
+        run_sequence(
+            animal,
+            sequence_dir,
+            results_root,
+            max_rgb_frames=max_rgb_frames,
+            skip_existing=skip_existing,
+        )
+        return sequence_dir, None
+    except Exception as exc:
+        return sequence_dir, exc
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run 4RC demo on AiM sequences.")
     parser.add_argument(
@@ -249,16 +270,45 @@ def parse_args():
         default=False,
         help="Do not overwrite existing per-frame 4RC outputs.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of sequences to process concurrently.",
+    )
     return parser.parse_args()
 
-def resolve_sequence_dirs(aim_root: Path, animal: str, sequence: str | None):
+def resolve_sequence_dirs(
+    aim_root: Path,
+    results_root: Path,
+    animal: str,
+    sequence: str | None,
+):
     animal_dir = aim_root / animal
     if not animal_dir.exists():
         raise FileNotFoundError(f"Animal directory does not exist: {animal_dir}")
     if not animal_dir.is_dir():
         raise NotADirectoryError(f"Animal path is not a directory: {animal_dir}")
 
+    results_animal_dir = results_root / animal
+    if not results_animal_dir.exists():
+        return []
+    if not results_animal_dir.is_dir():
+        raise NotADirectoryError(
+            f"Animal results path is not a directory: {results_animal_dir}"
+        )
+
     if sequence is not None:
+        result_sequence_dir = results_animal_dir / sequence
+        if not result_sequence_dir.exists():
+            raise FileNotFoundError(
+                f"Sequence results directory does not exist: {result_sequence_dir}"
+            )
+        if not result_sequence_dir.is_dir():
+            raise NotADirectoryError(
+                f"Sequence results path is not a directory: {result_sequence_dir}"
+            )
+
         sequence_dir = animal_dir / sequence
         if not sequence_dir.exists():
             raise FileNotFoundError(f"Sequence directory does not exist: {sequence_dir}")
@@ -266,23 +316,54 @@ def resolve_sequence_dirs(aim_root: Path, animal: str, sequence: str | None):
             raise NotADirectoryError(f"Sequence path is not a directory: {sequence_dir}")
         return [sequence_dir]
 
-    return sorted(path for path in animal_dir.iterdir() if path.is_dir())
+    return sorted(
+        animal_dir / path.name
+        for path in results_animal_dir.iterdir()
+        if path.is_dir() and (animal_dir / path.name).is_dir()
+    )
 
 def main():
     args = parse_args()
-    sequence_dirs = resolve_sequence_dirs(args.aim_root, args.animal, args.sequence)
+    if args.workers <= 0:
+        raise ValueError(f"--workers must be positive, got {args.workers}")
 
-    for sequence_dir in tqdm.tqdm(sequence_dirs, desc="Sequences"):
-        try:
-            run_sequence(
+    sequence_dirs = resolve_sequence_dirs(
+        args.aim_root,
+        args.results_root,
+        args.animal,
+        args.sequence,
+    )
+
+    if args.workers == 1 or len(sequence_dirs) <= 1:
+        for sequence_dir in tqdm.tqdm(sequence_dirs, desc="Sequences"):
+            _, error = _run_sequence_task(
                 args.animal,
                 sequence_dir,
                 args.results_root,
-                max_rgb_frames=args.max_rgb_frames,
-                skip_existing=args.skip_existing,
+                args.max_rgb_frames,
+                args.skip_existing,
             )
-        except Exception as e:
-            print(e)
+            if error is not None:
+                print(f"{sequence_dir.name}: {error}")
+        return
+
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = [
+            executor.submit(
+                _run_sequence_task,
+                args.animal,
+                sequence_dir,
+                args.results_root,
+                args.max_rgb_frames,
+                args.skip_existing,
+            )
+            for sequence_dir in sequence_dirs
+        ]
+
+        for future in tqdm.tqdm(as_completed(futures), total=len(futures), desc="Sequences"):
+            sequence_dir, error = future.result()
+            if error is not None:
+                print(f"{sequence_dir.name}: {error}")
 
 
 if __name__ == "__main__":

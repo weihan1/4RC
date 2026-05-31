@@ -144,7 +144,7 @@ class Arc(
         
         for i in range(N):
             pts3d_world = world_points_list[i] # [B, H, W, 3]
-
+            ind_depth = depth.squeeze()[i]
             track_list_per_query = []
             conf_list_per_query = []
             for q_i, q_idx in enumerate(track_query_idx_list):
@@ -168,6 +168,7 @@ class Arc(
             )
 
             output_list.append({
+                "depth": ind_depth,
                 "pts": pts3d_world,
                 "conf": depth_conf_list[i],
                 "track": track,
