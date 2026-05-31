@@ -22,7 +22,7 @@ job_log="${log_dir}/run_demo_animals_parallel_${timestamp}.joblog"
 
 animals=(
   bear boar cat cougar cow deer dog elephant fox goat hippo horse
-  leopard moose panther pig rabbit racoon rhino sheep tiger wolf
+  leopard moose panther pig rabbit racoon rhino sheep tiger wolf zebra
 )
 
 mkdir -p "$log_dir"

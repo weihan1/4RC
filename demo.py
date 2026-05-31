@@ -74,7 +74,7 @@ def list_aim_rgb_frames(sequence_dir: Path):
         for path in sequence_dir.iterdir()
         if path.is_file()
         and path.suffix.lower() in RGB_SUFFIXES
-        and "_rgb_original" in path.stem
+        and "_rgb" in path.stem
     )
 
 
