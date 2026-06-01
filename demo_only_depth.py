@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +41,12 @@ def parse_args():
         default=False,
         help="Do not overwrite an existing depth.npy.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="Number of sequences to process concurrently.",
+    )
     return parser.parse_args()
 
 
@@ -79,7 +86,7 @@ def world_to_camera(pts3d: np.ndarray, c2w: np.ndarray):
     if c2w.shape != (4, 4):
         raise ValueError(f"Expected c2w with shape [4, 4], got {c2w.shape}")
 
-    w2c = np.linalg.inv(c2w)
+    w2c = c2w
     ones = np.ones((*pts3d.shape[:2], 1), dtype=pts3d.dtype)
     pts3d_h = np.concatenate([pts3d, ones], axis=-1)
     cam_points_h = pts3d_h @ w2c.T
@@ -104,10 +111,13 @@ def generate_depth(frame_output_dir: Path, skip_existing: bool = False):
         raise FileNotFoundError(f"Missing {missing} in {frame_output_dir}")
 
     pts3d = np.load(frame_output_dir / "pts3d.npy")
-    c2w = np.load(frame_output_dir / "c2w.npy")
+    #TODO: current bug here... the loaded tensor is actually w2c
+    w2c = np.load(frame_output_dir / "c2w.npy") 
+    c2w = np.linalg.inv(w2c)
+    np.save(frame_output_dir / "c2w.npy", c2w)
     K = np.load(frame_output_dir / "K.npy")
 
-    cam_points = world_to_camera(pts3d, c2w)
+    cam_points = world_to_camera(pts3d, w2c)
     # After projection with K, the third coordinate remains the camera-space z depth.
     depth = camera_points_to_depth(cam_points, K).astype(np.float32, copy=False)
     np.save(depth_path, depth)
@@ -135,22 +145,58 @@ def run_sequence(sequence_dir: Path, skip_existing: bool = False):
     return saved_frames, skipped_frames
 
 
+def process_sequence(sequence_dir: Path, skip_existing: bool = False):
+    saved_frames, skipped_frames = run_sequence(
+        sequence_dir,
+        skip_existing=skip_existing,
+    )
+    return sequence_dir.name, saved_frames, skipped_frames
+
+
 def main():
     args = parse_args()
-    sequence_dirs = resolve_sequence_dirs(args.results_root, args.animal, args.sequence)
+    if args.workers < 1:
+        raise ValueError("--workers must be at least 1")
 
-    for sequence_dir in tqdm.tqdm(sequence_dirs, desc="Sequences"):
-        try:
-            saved_frames, skipped_frames = run_sequence(
+    sequence_dirs = resolve_sequence_dirs(args.results_root, args.animal, args.sequence)
+    if args.workers == 1:
+        for sequence_dir in tqdm.tqdm(sequence_dirs, desc="Sequences"):
+            try:
+                sequence_name, saved_frames, skipped_frames = process_sequence(
+                    sequence_dir,
+                    skip_existing=args.skip_existing,
+                )
+                print(
+                    f"{sequence_name}: saved {saved_frames} depth files, "
+                    f"skipped {skipped_frames}"
+                )
+            except Exception as exc:
+                print(f"Failed on {sequence_dir}: {exc}")
+        return
+
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        future_to_sequence = {
+            executor.submit(
+                process_sequence,
                 sequence_dir,
-                skip_existing=args.skip_existing,
-            )
-            print(
-                f"{sequence_dir.name}: saved {saved_frames} depth files, "
-                f"skipped {skipped_frames}"
-            )
-        except Exception as exc:
-            print(f"Failed on {sequence_dir}: {exc}")
+                args.skip_existing,
+            ): sequence_dir
+            for sequence_dir in sequence_dirs
+        }
+        for future in tqdm.tqdm(
+            as_completed(future_to_sequence),
+            total=len(future_to_sequence),
+            desc="Sequences",
+        ):
+            sequence_dir = future_to_sequence[future]
+            try:
+                sequence_name, saved_frames, skipped_frames = future.result()
+                print(
+                    f"{sequence_name}: saved {saved_frames} depth files, "
+                    f"skipped {skipped_frames}"
+                )
+            except Exception as exc:
+                print(f"Failed on {sequence_dir}: {exc}")
 
 
 if __name__ == "__main__":

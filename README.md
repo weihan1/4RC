@@ -149,6 +149,7 @@ python inference.py --input ./examples/robot_arm --save result.npz
 ***[Optional]*** 
 - *Use `--refine_track_visualization` to enable VLA + SAM2 to auto-segment dynamic objects and filter their trajectories for better visulization.*
 - *Use `--checkpoint_dir Luo-Yihang/4RC_geofinetune` to use the checkpoint finetuned on more geometry datasets for even better geometry prediction.*
+- *Use `--skip-existing` to leave an existing `--save` output file untouched instead of overwriting it.*
 
 <div style="width: 100%; text-align: center; margin:auto;">
     <img style="width:100%" src="assets/viser_demo.gif">

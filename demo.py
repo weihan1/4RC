@@ -135,7 +135,7 @@ def squeeze_batch_dim(array: np.ndarray):
 
 
 def get_timestep_from_frame_path(frame_path: Path):
-    suffix = "_rgb_original"
+    suffix = "_rgb"
     stem = frame_path.stem
     if not stem.endswith(suffix):
         raise ValueError(f"Unexpected AiM RGB filename: {frame_path.name}")
@@ -184,7 +184,7 @@ def save_sequence_outputs(predictions, frame_paths, output_dir: Path, skip_exist
 
         np.save(frame_output_dir / "pts3d.npy", squeeze_batch_dim(to_numpy_array(pred["pts"])))
         np.save(frame_output_dir / "depth_conf.npy", squeeze_batch_dim(to_numpy_array(pred["conf"])))
-        c2w = torch.linalg.inv(pred["extrinsic"])
+        # c2w = torch.linalg.inv(pred["extrinsic"]) #NOTE: this is wrong!!!
         np.save(frame_output_dir / "c2w.npy", squeeze_batch_dim(to_numpy_array(c2w)))
         np.save(frame_output_dir / "K.npy", squeeze_batch_dim(to_numpy_array(pred["intrinsic"])))
         img = to_uint8_rgb_image(view)
@@ -266,8 +266,8 @@ def main():
                 max_rgb_frames=args.max_rgb_frames,
                 skip_existing=args.skip_existing,
             )
-        except:
-            continue
+        except Exception as e:
+            print(f"Encountered {e}")
 
 
 if __name__ == "__main__":
