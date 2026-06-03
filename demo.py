@@ -185,6 +185,7 @@ def save_sequence_outputs(predictions, frame_paths, output_dir: Path, skip_exist
         np.save(frame_output_dir / "pts3d.npy", squeeze_batch_dim(to_numpy_array(pred["pts"])))
         np.save(frame_output_dir / "depth_conf.npy", squeeze_batch_dim(to_numpy_array(pred["conf"])))
         # c2w = torch.linalg.inv(pred["extrinsic"]) #NOTE: this is wrong!!!
+        c2w = pred["extrinsic"]
         np.save(frame_output_dir / "c2w.npy", squeeze_batch_dim(to_numpy_array(c2w)))
         np.save(frame_output_dir / "K.npy", squeeze_batch_dim(to_numpy_array(pred["intrinsic"])))
         img = to_uint8_rgb_image(view)

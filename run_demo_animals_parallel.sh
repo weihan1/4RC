@@ -73,7 +73,7 @@ for i in "${!gpu_ids[@]}"; do
   quoted_gpu="$(printf '%q' "${gpu_ids[$i]}")"
   parallel_cmd+=" ${slot}) gpu=${quoted_gpu} ;;"
 done
-parallel_cmd+=' *) echo "Unexpected parallel slot: $slot" >&2; exit 1 ;; esac; CUDA_VISIBLE_DEVICES="$gpu" python demo.py --skip-existing --animal "{}"'
+parallel_cmd+=' *) echo "Unexpected parallel slot: $slot" >&2; exit 1 ;; esac; CUDA_VISIBLE_DEVICES="$gpu" python demo_uncropped.py --skip-existing --animal "{}"'
 
 echo "Writing run log to $run_log"
 echo "Writing job log to $job_log"
