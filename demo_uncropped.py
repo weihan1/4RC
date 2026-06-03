@@ -24,7 +24,7 @@ MODEL_INPUT_SIZE = 512
 MODEL_PATCH_SIZE = 14
 MODEL_SQUARE_OK = False
 FRAME_OUTPUT_FILES = (
-    "pts3d.npy",
+    "pts3d_processed.npy",
     "depth.npy",
     "depth_processed.npy",
     "depth_conf.npy",
