@@ -67,16 +67,17 @@ if [[ "$num_jobs" -eq 0 ]]; then
   exit 1
 fi
 
-parallel_cmd='slot={%}; case "$slot" in'
+parallel_cmd='slot={%}; animal="{}"; animal_log_dir='"$(printf '%q' "$log_dir")"'/"$animal"; animal_log="$animal_log_dir"/run_demo_animals_parallel_'"$(printf '%q' "$timestamp")"'.log; mkdir -p "$animal_log_dir"; case "$slot" in'
 for i in "${!gpu_ids[@]}"; do
   slot=$((i + 1))
   quoted_gpu="$(printf '%q' "${gpu_ids[$i]}")"
   parallel_cmd+=" ${slot}) gpu=${quoted_gpu} ;;"
 done
-parallel_cmd+=' *) echo "Unexpected parallel slot: $slot" >&2; exit 1 ;; esac; CUDA_VISIBLE_DEVICES="$gpu" python demo_uncropped.py --skip-existing --animal "{}"'
+parallel_cmd+=' *) echo "Unexpected parallel slot: $slot" >&2; exit 1 ;; esac; CUDA_VISIBLE_DEVICES="$gpu" python demo_uncropped.py --skip-existing --animal "$animal" 2>&1 | tee "$animal_log"'
 
 echo "Writing run log to $run_log"
 echo "Writing job log to $job_log"
+echo "Writing per-animal logs to ${log_dir}/<animal>/run_demo_animals_parallel_${timestamp}.log"
 echo "Using GPUs: ${gpu_ids[*]}"
 
 parallel -j "$num_jobs" --line-buffer --joblog "$job_log" "$parallel_cmd" ::: "${animals[@]}" 2>&1 | tee "$run_log"
